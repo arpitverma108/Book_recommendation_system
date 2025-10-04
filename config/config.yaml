@@ -17,5 +17,9 @@ data_validation_config:
   ratings_csv_file: BX-Book-Ratings.csv
 
 
+data_transformation_config:
+  transformed_data_dir: transformed_data
+
+
   
     
