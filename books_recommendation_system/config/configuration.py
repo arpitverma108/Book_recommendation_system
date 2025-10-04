@@ -3,7 +3,7 @@ import sys
 from books_recommendation_system.logger.log import logging
 from books_recommendation_system.utils.util import read_yaml_file
 from books_recommendation_system.exception.exception_handler import AppException
-from books_recommendation_system.entity.config_entity import DataIngestionConfig, DataValidationConfig, DataTransformationConfig, ModelTrainerConfig, ModelRecommendationConfig
+from books_recommendation_system.entity.config_entity import DataIngestionConfig
 from books_recommendation_system.constant import *
 
 
