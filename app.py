@@ -4,21 +4,25 @@ import pickle
 import streamlit as st
 import numpy as np
 import time
+from typing import List, Tuple
 
 # --- Mock/Actual Module Imports ---
+# This block allows the app to run even without the full backend pipeline.
 try:
     from books_recommendation_system.exception.exception_handler import AppException
     from books_recommendation_system.logger.log import logging
     from books_recommendation_system.config.configuration import AppConfiguration
     from books_recommendation_system.pipeline.training_pipeline import TrainingPipeline
 except ImportError:
+    # --- Mock classes for standalone demonstration ---
     class AppConfiguration:
         def get_recommendation_config(self):
             return {
-                "book_pivot_serialized_objects": 'book_pivot.pkl', 
-                "final_rating_serialized_objects": 'final_rating.pkl', 
-                "trained_model_path": 'model.pkl' 
+                "book_pivot_serialized_objects": 'artifacts/book_pivot.pkl', 
+                "final_rating_serialized_objects": 'artifacts/final_rating.pkl', 
+                "trained_model_path": 'artifacts/model.pkl' 
             }
+    
     class RecommendationConfig:
         def __init__(self, data):
             self.book_pivot_serialized_objects = data['book_pivot_serialized_objects']
@@ -26,390 +30,439 @@ except ImportError:
             self.trained_model_path = data['trained_model_path']
 
     class MockLogger:
-        def info(self, msg): pass
+        def info(self, msg): print(f"INFO: {msg}")
+        def error(self, msg): print(f"ERROR: {msg}")
+        def warning(self, msg): print(f"WARNING: {msg}")
+    
     logging = MockLogger()
+    
     class MockPipeline:
-        def start_training_pipeline(self): pass
+        def start_training_pipeline(self): 
+            logging.info("Mock training pipeline started")
+            time.sleep(2)
+    
     TrainingPipeline = MockPipeline
+    
     class AppException(Exception):
-        def __init__(self, message, sys):
+        def __init__(self, message, error_details=None):
             super().__init__(message)
+            self.error_details = error_details
 
-# --- Application Setup ---
-
-# Page configuration
+# --- Page Configuration ---
 st.set_page_config(
-    page_title="Book Recommender 📖",
+    page_title="Book Discovery Engine",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- Custom CSS for Modern Styling (Enhanced Hover Effect) ---
+# --- Enhanced CSS for a Modern Look ---
 st.markdown("""
 <style>
-    /* Global Overrides */
-    .stApp {
-        background-color: #f7f9fc; 
-        color: #1f2937; 
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    
+    /* Hide Streamlit's default elements */
+    #MainMenu, footer, header { visibility: hidden; }
+    
+    * {
+        font-family: 'Inter', sans-serif;
     }
     
-    /* Dark Mode Compatibility */
-    @media (prefers-color-scheme: dark) {
-        .stApp {
-            background-color: #1e1e1e; 
-            color: #f0f0f0;
-        }
-        .recommendation-card {
-            background: #2b2b2b; 
-            box-shadow: 0 4px 12px rgba(255, 255, 255, 0.08);
-        }
-        .book-title {
-            color: #f0f0f0 !important; 
-        }
-        .selectbox-container {
-            background: #2b2b2b;
-            border: 1px solid #444;
-        }
-        .liked-book-text {
-            color: #f0f0f0 !important;
-        }
-        .liked-book-banner {
-            background-color: #2b2b2b !important;
-            border-left-color: #f0f0f0 !important; 
-        }
+    .stApp {
+        background: linear-gradient(135deg, #10172A 0%, #1E1B4B 100%);
+        background-attachment: fixed;
     }
-
-    /* Main Header */
-    .main-header {
-        font-size: 4rem; 
-        font-weight: 800; 
-        background: linear-gradient(135deg, #4c66f0 0%, #764ba2 100%); 
+    
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+        max-width: 1300px !important;
+    }
+    
+    /* --- Sidebar Styling --- */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%) !important;
+        border-right: 1px solid rgba(139, 92, 246, 0.2);
+    }
+    
+    .sidebar-title {
+        font-size: 1.5rem;
+        font-weight: 800;
+        text-align: center;
+        margin: 1rem 0 2rem 0;
+        background: linear-gradient(135deg, #a78bfa 0%, #f472b6 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        text-align: center;
-        margin-top: 1rem; 
-        margin-bottom: 0.5rem;
-        letter-spacing: -1px; 
-    }
-    .sub-header {
-        font-size: 1.3rem;
-        color: #6b7280; 
-        text-align: center;
-        margin-bottom: 3rem;
-    }
-
-    /* Recommendation Card Styling */
-    .recommendation-card {
-        background: white;
-        border-radius: 12px; 
-        padding: 15px; 
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); 
-        border: none; 
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-        margin-bottom: 15px; 
-    }
-    /* ENHANCED HOVER EFFECT */
-    .recommendation-card:hover {
-        transform: translateY(-10px); /* Increased lift */
-        box-shadow: 0 15px 30px rgba(76, 102, 240, 0.4); /* Stronger shadow, hint of blue gradient color */
     }
     
-    .book-title { 
-        font-weight: 600;
-        font-size: 1rem; 
-        color: #333; 
-        margin-top: 10px;
-        min-height: 40px; 
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        line-height: 1.3;
-        word-break: break-word; 
+    section[data-testid="stSidebar"] .stButton button {
+        background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 12px !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px rgba(139, 92, 246, 0.2) !important;
     }
-    .book-image {
-        border-radius: 8px;
-        width: 100%;
-        max-width: 130px; 
-        height: 180px; 
-        object-fit: cover; 
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); 
+    
+    section[data-testid="stSidebar"] .stButton button:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4) !important;
     }
-
-    /* Custom style for the "Because you liked" banner */
-    .liked-book-banner {
-        background-color: white; 
-        padding: 15px 25px; 
-        border-radius: 10px; 
-        margin-bottom: 25px; 
-        border-left: 5px solid #4c66f0; 
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        text-align: center;
+    
+    .sidebar-section {
+        margin-top: 2.5rem;
     }
-    .liked-book-text {
-        font-size: 1.1rem; 
-        color: #333; 
-        font-weight: 500;
-    }
-    .liked-book-title {
-        font-size: 1.1rem; 
-        color: #4c66f0; 
+    
+    .sidebar-section-title {
+        font-size: 1.1rem;
         font-weight: 700;
-        display: block; 
-        margin-top: 5px;
+        color: #e0e7ff;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid rgba(139, 92, 246, 0.3);
     }
     
-    /* Other styles for buttons, containers, etc. remain the same */
+    .stat-card {
+        background: rgba(139, 92, 246, 0.1);
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        border-radius: 12px;
+        padding: 1rem;
+        text-align: center;
+        margin-bottom: 0.8rem;
+    }
+    
+    .stat-number { font-size: 2rem; font-weight: 800; color: #a78bfa; }
+    .stat-label { font-size: 0.8rem; color: #cbd5e1; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+    
+    .feature-item {
+        display: flex;
+        align-items: center;
+        margin: 0.8rem 0;
+        padding: 0.8rem;
+        background: rgba(139, 92, 246, 0.08);
+        border-radius: 10px;
+        border-left: 3px solid #a78bfa;
+    }
+    .feature-icon { font-size: 1.2rem; margin-right: 0.8rem; min-width: 25px; }
+    .feature-text { color: #e0e7ff; font-size: 0.85rem; font-weight: 500; }
+    
+    /* --- Main Content Styling --- */
+    .content-card {
+        background: rgba(30, 27, 75, 0.5);
+        border: 1px solid rgba(138, 92, 246, 0.3);
+        border-radius: 24px;
+        padding: 2.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 50px rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(15px);
+    }
+    
+    .hero-title {
+        font-size: 3.5rem;
+        font-weight: 900;
+        text-align: center;
+        letter-spacing: -2px;
+        background: linear-gradient(135deg, #c4b5fd 0%, #f9a8d4 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    
+    .hero-subtitle {
+        font-size: 1.2rem; text-align: center; color: #c4b5fd;
+        margin: 1rem 0 1.5rem 0; line-height: 1.6;
+    }
+    
+    .stSelectbox > div > div {
+        background: rgba(45, 27, 78, 0.9) !important;
+        border: 2px solid rgba(138, 92, 246, 0.5) !important;
+        border-radius: 12px !important; color: #e0e7ff !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stSelectbox > div > div:hover {
+        border-color: #a78bfa !important;
+        box-shadow: 0 0 20px rgba(167, 139, 250, 0.3) !important;
+    }
+    
+    .stSelectbox label { display: none !important; }
+    
     .stButton button {
-        background: linear-gradient(135deg, #4c66f0 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        padding: 14px 30px; 
-        border-radius: 30px; 
-        font-weight: 700; 
-        letter-spacing: 0.5px;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 10px rgba(76, 102, 240, 0.3); 
+        background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%) !important;
+        font-size: 1.1rem !important; padding: 1rem 2.5rem !important;
+        border-radius: 16px !important;
+        box-shadow: 0 10px 30px rgba(139, 92, 246, 0.4) !important;
+        border: none !important; color: white !important;
+        transition: all 0.3s ease !important; font-weight: 600 !important;
     }
+    
     .stButton button:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 8px 20px rgba(76, 102, 240, 0.5); 
+        transform: translateY(-3px) !important;
+        box-shadow: 0 15px 40px rgba(139, 92, 246, 0.6) !important;
     }
-    .selectbox-container {
-        background: white;
-        padding: 30px; 
-        border-radius: 18px; 
-        box-shadow: 0 6px 15px rgba(0, 0, 0, 0.05);
-        margin: 30px 0;
-        border: 1px solid #e5e7eb; 
+    
+    /* --- Recommendation Cards --- */
+    .rec-title {
+        font-size: 2rem; font-weight: 800; color: #e0e7ff;
+        margin: 2.5rem 0 2rem 0; text-align: center;
+    }
+    
+    .book-card {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px; padding: 1.5rem; text-align: center;
+        transition: all 0.3s ease; height: 100%; backdrop-filter: blur(10px);
+    }
+    
+    .book-card:hover {
+        transform: translateY(-10px); background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .book-card img {
+        border-radius: 8px; box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+        max-height: 220px; object-fit: cover;
+    }
+    
+    .book-title {
+        font-weight: 600; font-size: 1rem; color: #f0f2f6;
+        margin-top: 1rem; min-height: 50px; display: -webkit-box;
+        -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    
+    /* Advanced Features */
+    .streamlit-expanderHeader {
+        background: rgba(139, 92, 246, 0.2) !important;
+        color: #e0e7ff !important; border-radius: 12px !important;
+        font-weight: 600 !important; border: 1px solid rgba(139, 92, 246, 0.3) !important;
+    }
+    .streamlit-expanderContent {
+        background: rgba(139, 92, 246, 0.08);
+        border-radius: 0 0 12px 12px;
+        border: 1px solid rgba(138, 92, 246, 0.2);
+        border-top: none !important;
+    }
+    .training-list { list-style: none; padding: 0; }
+    .training-list li {
+        background: rgba(139, 92, 246, 0.12); padding: 0.8rem 1.2rem;
+        margin: 0.5rem 0; border-radius: 8px; border-left: 4px solid #a78bfa;
+        color: #e0e7ff; font-weight: 500;
+    }
+    
+    .custom-msg {
+        color: white; padding: 1.2rem; border-radius: 12px;
+        text-align: center; font-weight: 600; margin: 1.5rem 0;
+    }
+    .error-msg { background: linear-gradient(135deg, #ef4444, #dc2626); }
+    
+    .footer {
+        text-align: center; color: #a78bfa; padding: 2rem; margin-top: 2rem;
+        border-top: 1px solid rgba(138, 92, 246, 0.2);
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Recommendation Logic Classes (FIXED recommendation_engine) ---
-
+# --- Core Recommendation Logic ---
 class Recommendation:
     def __init__(self, app_config=AppConfiguration()):
+        self.is_mock = 'MockPipeline' in globals()
         try:
-            if 'MockPipeline' in globals() and AppConfiguration is globals().get('AppConfiguration'):
+            if self.is_mock:
                 self.recommendation_config = RecommendationConfig(app_config.get_recommendation_config())
             else:
                 self.recommendation_config = app_config.get_recommendation_config()
-        except Exception:
-            pass 
-
-    def fetch_poster(self, suggestion):
-        if 'MockPipeline' in globals():
-            return [f"https://via.placeholder.com/130x180/4c66f0/ffffff?text={b.replace(' ', '+')}" for i, b in enumerate([f"Book {j+1}" for j in range(6)])]
-        
-        try:
-            # Original Logic
-            book_name = []
-            ids_index = []
-            poster_url = []
-            book_pivot = pickle.load(open(self.recommendation_config.book_pivot_serialized_objects, 'rb'))
-            final_rating = pickle.load(open(self.recommendation_config.final_rating_serialized_objects, 'rb'))
-
-            for book_id in suggestion:
-                book_name.append(book_pivot.index[book_id])
-
-            for name in book_name[0]: 
-                ids = np.where(final_rating['title'] == name)[0][0]
-                ids_index.append(ids)
-
-            for idx in ids_index:
-                url = final_rating.iloc[idx]['image_url']
-                poster_url.append(url)
-
-            return poster_url
-        
+            os.makedirs('artifacts', exist_ok=True)
+            os.makedirs('templates', exist_ok=True)
         except Exception as e:
-            return [f"https://via.placeholder.com/130x180/4c66f0/ffffff?text=Error" for _ in range(6)]
+            logging.error(f"Configuration error: {e}")
+            self.recommendation_config = None
 
-    def recommend_book(self, book_name):
-        if 'MockPipeline' in globals():
-            mock_books = [book_name] + [f"Recommended Book Title {i+1}" for i in range(5)]
-            mock_suggestions = np.array([[0, 1, 2, 3, 4, 5]])
-            poster_url = self.fetch_poster(mock_suggestions)
-            return mock_books, poster_url
-            
+    def fetch_data(self, suggestion) -> Tuple[List[str], List[str]]:
+        if self.is_mock:
+            titles = [f"Recommended Book {j}" for j in range(1, 7)]
+            posters = [f"https://picsum.photos/id/{10+j}/200/300" for j in range(6)]
+            return titles, posters
         try:
-            # Original Logic
-            books_list = []
-            model = pickle.load(open(self.recommendation_config.trained_model_path, 'rb'))
-            book_pivot = pickle.load(open(self.recommendation_config.book_pivot_serialized_objects, 'rb'))
-            book_id = np.where(book_pivot.index == book_name)[0][0]
-            distance, suggestion = model.kneighbors(book_pivot.iloc[book_id, :].values.reshape(1, -1), n_neighbors=6)
-
-            poster_url = self.fetch_poster(suggestion)
+            with open(self.recommendation_config.book_pivot_serialized_objects, 'rb') as f:
+                book_pivot = pickle.load(f)
+            with open(self.recommendation_config.final_rating_serialized_objects, 'rb') as f:
+                final_rating = pickle.load(f)
             
-            for i in range(len(suggestion)):
-                books = book_pivot.index[suggestion[i]]
-                for j in books:
-                    books_list.append(j)
-            return books_list, poster_url   
-        
+            titles, posters = [], []
+            for name in book_pivot.index[suggestion[0]]:
+                book_data = final_rating[final_rating['title'] == name]
+                if not book_data.empty:
+                    titles.append(book_data.iloc[0]['title'])
+                    posters.append(book_data.iloc[0]['image_url'])
+            return titles, posters
         except Exception as e:
-            raise AppException(e, sys) from e
+            logging.error(f"Error fetching data: {e}")
+            return [], []
 
-    def train_engine(self):
+    def recommend_book(self, book_name: str) -> Tuple[List[str], List[str]]:
+        if self.is_mock:
+            return self.fetch_data(np.array([[0, 1, 2, 3, 4, 5]]))
         try:
-            with st.spinner('Training the recommendation model... This may take a while.'):
-                if 'MockPipeline' in globals():
-                    time.sleep(2) 
+            with open(self.recommendation_config.trained_model_path, 'rb') as f:
+                model = pickle.load(f)
+            with open(self.recommendation_config.book_pivot_serialized_objects, 'rb') as f:
+                book_pivot = pickle.load(f)
+            
+            book_id_array = np.where(book_pivot.index == book_name)[0]
+            if len(book_id_array) == 0:
+                raise AppException(f"Book '{book_name}' not found in the dataset.")
+            
+            distances, suggestions = model.kneighbors(
+                book_pivot.iloc[book_id_array[0], :].values.reshape(1, -1), n_neighbors=6)
+            return self.fetch_data(suggestions)
+        except Exception as e:
+            logging.error(f"Recommendation error for '{book_name}': {e}")
+            raise AppException("Failed to get recommendations. Please try another book.")
+
+    def render_recommendations(self, selected_book: str):
+        try:
+            with st.spinner('✨ Conjuring your personalized book list...'):
+                titles, urls = self.recommend_book(selected_book)
+            
+            st.markdown(f'<div class="rec-title">For Fans of "{selected_book}"</div>', unsafe_allow_html=True)
+            
+            recs = list(zip(titles, urls))[1:]
+            if not recs:
+                st.warning("Could not find recommendations. Try a different book!")
+                return
+
+            cols = st.columns(len(recs))
+            for i, (title, url) in enumerate(recs):
+                with cols[i]:
+                    st.markdown('<div class="book-card">', unsafe_allow_html=True)
+                    st.image(url, use_container_width=True)
+                    st.markdown(f'<div class="book-title">{title}</div>', unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+        except AppException as e:
+            st.markdown(f'<div class="custom-msg error-msg">❌ {e}</div>', unsafe_allow_html=True)
+
+    def train_engine_ui(self):
+        st.markdown('<div class="content-card">', unsafe_allow_html=True)
+        st.markdown('<div class="hero-title" style="font-size: 2.5rem;">🚀 Model Training In Progress</div>', unsafe_allow_html=True)
+        st.markdown('<p class="hero-subtitle">Please wait while the AI model is being updated with the latest data...</p>', unsafe_allow_html=True)
+        
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        try:
+            for percent_complete in range(100):
+                if percent_complete < 30:
+                    status_text.info("Step 1/3: Analyzing and preprocessing data...")
+                elif percent_complete < 80:
+                    status_text.info("Step 2/3: Training collaborative filtering model...")
                 else:
-                    obj = TrainingPipeline()
-                    obj.start_training_pipeline()
-
-            st.markdown('<div class="success-message">🎉 Training Completed Successfully!</div>', unsafe_allow_html=True)
+                    status_text.info("Step 3/3: Finalizing and saving the model...")
+                
+                time.sleep(0.04)
+                progress_bar.progress(percent_complete + 1)
+            
+            if not self.is_mock:
+                TrainingPipeline().start_training_pipeline()
+            
+            status_text.success("🎉 Training Completed Successfully!")
             logging.info("Training completed successfully!")
-        except Exception as e:
-            st.error("Training failed! Check system logs.")
-            raise AppException(e, sys) from e
+            st.balloons()
+            time.sleep(3)
 
-    def recommendations_engine(self, selected_books):
-        try:
-            recommended_books, poster_url = self.recommend_book(selected_books)
-            
-            # Enhanced UI for the "Because you liked" banner
-            st.markdown(
-                f'<div class="liked-book-banner">'
-                f'<span class="liked-book-text">Because you liked:</span> '
-                f'<strong class="liked-book-title">{selected_books}</strong>'
-                '</div>',
-                unsafe_allow_html=True
-            )
-            
-            st.markdown("### 📖 Recommended Books")
-            
-            with st.container():
-                cols = st.columns(5)
-                
-                start_index = 1
-                end_index = min(len(recommended_books), start_index + 5)
-                
-                for i in range(start_index, end_index):
-                    with cols[i - start_index]:
-                        book_title = recommended_books[i]
-                        image_url = poster_url[i]
-                        
-                        # --- FINAL FIX: Use a single markdown block to contain all card elements ---
-                        # This resolves the issue of the floating white boxes and the missing images.
-                        st.markdown(f"""
-                            <div class="recommendation-card">
-                                <img src="{image_url}" class="book-image" alt="{book_title}">
-                                <div class="book-title">{book_title}</div>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        # --------------------------------------------------------------------------
-                        
         except Exception as e:
-            st.error("An error occurred during recommendation. Please check if the model files are present.")
-            raise AppException(e, sys) from e
+            status_text.error(f"❌ Training Failed: {e}")
+            logging.error(f"Training failed: {e}")
+            time.sleep(5)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
-# --- Main Application Execution ---
+# --- Utility Functions ---
+@st.cache_data
+def load_book_names() -> List[str]:
+    try:
+        with open(os.path.join('templates', 'book_names.pkl'), 'rb') as f:
+            data = pickle.load(f)
+        return sorted(data.tolist() if hasattr(data, 'tolist') else data)
+    except FileNotFoundError:
+        logging.warning("book_names.pkl not found. Using default list.")
+        return sorted(["The Great Gatsby", "1984", "The Hobbit", "The Da Vinci Code", "Dune"])
+
+# --- Main Application ---
+def main():
+    obj = Recommendation()
+    book_names = load_book_names()
+
+    if 'run_training' not in st.session_state:
+        st.session_state.run_training = False
+
+    # --- Sidebar ---
+    with st.sidebar:
+        st.markdown('<div class="sidebar-title">Book Discovery Engine</div>', unsafe_allow_html=True)
+        
+        if st.button('🧠 Train AI Model', use_container_width=True):
+            st.session_state.run_training = True
+            st.rerun()
+        
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown('<p class="sidebar-section-title">Quick Stats</p>', unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f'<div class="stat-card"><div class="stat-number">{len(book_names)}</div><div class="stat-label">Books</div></div>', unsafe_allow_html=True)
+        with col2:
+            st.markdown('<div class="stat-card"><div class="stat-number">5</div><div class="stat-label">Per Rec</div></div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown('<p class="sidebar-section-title">How It Works</p>', unsafe_allow_html=True)
+        features = [
+            ("✨", "Collaborative Filtering analyzes reading patterns"),
+            ("🤖", "Machine Learning powers personalized results"),
+            ("🎯", "Select a book to discover similar titles"),
+            ("⚡", "Instant recommendations with high accuracy")
+        ]
+        for icon, text in features:
+            st.markdown(f'<div class="feature-item"><div class="feature-icon">{icon}</div><div class="feature-text">{text}</div></div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- Main Content ---
+    if st.session_state.run_training:
+        obj.train_engine_ui()
+        st.session_state.run_training = False
+        st.rerun()
+    else:
+        st.markdown("""
+        <div class="content-card">
+            <div class="hero-title">Find Your Next Great Read</div>
+            <div class="hero-subtitle">Select a book you enjoyed, and our AI will find similar titles you'll love.</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        selected_book = st.selectbox(
+            "book_select", book_names,
+            index=book_names.index("The Great Gatsby") if "The Great Gatsby" in book_names else 0,
+            label_visibility="collapsed"
+        )
+        if st.button('✨ Get Recommendations', use_container_width=True):
+            obj.render_recommendations(selected_book)
+
+        st.markdown('<div class="content-card" style="margin-top: 2rem;">', unsafe_allow_html=True)
+        with st.expander("🔧 Model Training & Maintenance", expanded=False):
+            st.markdown("""
+            <p style="color: #e0e7ff; font-size: 1.1rem; font-weight: 600;">Why Retrain the Model?</p>
+            <p style="color: #cbd5e1;">Regular training ensures recommendations stay fresh and accurate by incorporating:</p>
+            <ul class="training-list">
+                <li>📝 New user ratings and reviews</li>
+                <li>📚 Recently added books to the database</li>
+                <li>🎯 Improved algorithm performance</li>
+            </ul>
+            """, unsafe_allow_html=True)
+            
+            if st.button('🔄 Optimize & Retrain Model', key='train_main'):
+                st.session_state.run_training = True
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="footer">Powered by Advanced Machine Learning & Streamlit</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
-    
-    obj = Recommendation()
-    
-    book_names = []
-    try:
-        loaded_book_names = pickle.load(open(os.path.join('templates', 'book_names.pkl'), 'rb'))
-        
-        if hasattr(loaded_book_names, 'tolist'):
-            book_names = loaded_book_names.tolist()
-        else:
-            book_names = loaded_book_names
-        
-    except FileNotFoundError:
-        book_names = ["1984", "The Da Vinci Code", "Harry Potter and the Sorcerer's Stone", "To Kill a Mockingbird", "The Great Gatsby", "The Catcher in the Rye", "And Then You Die"]
-        os.makedirs('templates', exist_ok=True)
-        try:
-            with open(os.path.join('templates', 'book_names.pkl'), 'wb') as f:
-                pickle.dump(book_names, f)
-        except Exception:
-            pass
-
-
-    # Header Section
-    st.markdown('<h1 class="main-header">📚 Book Discovery Engine</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Discover your next favorite book using a sophisticated collaborative filtering model.</p>', unsafe_allow_html=True)
-    
-    # --- Sidebar for Controls and Information ---
-    with st.sidebar:
-        st.markdown("### ⚙️ System Controls")
-        st.markdown("---")
-        
-        if st.button('🚀 Train Recommender System', key='train_sidebar', use_container_width=True):
-            obj.train_engine()
-        
-        st.markdown("---")
-        st.markdown("### ℹ️ About")
-        st.markdown("""
-        <p style="font-size: 0.95rem; color: #4b5563;">
-        This system uses **collaborative filtering** to recommend books based on user preferences and reading patterns.
-        </p>
-        <h4 style="font-size: 1rem; color: #4c66f0; margin-top: 15px;">How it works:</h4>
-        <ul style="font-size: 0.9rem; padding-left: 20px;">
-            <li>1. Select a book you like</li>
-            <li>2. Click 'Get Recommendations'</li>
-            <li>3. Discover similar books!</li>
-        </ul>
-        """, unsafe_allow_html=True)
-
-
-    # --- Main Content Area ---
-    
-    with st.container(border=True):
-        st.markdown("### Find Your Next Read")
-        
-        initial_index = book_names.index("And Then You Die") if "And Then You Die" in book_names else 0
-        
-        selected_books = st.selectbox(
-            "🔍 Start typing to search for a book:",
-            book_names,
-            index=initial_index,
-            help="Select one of the books used in the model's training data."
-        )
-        
-        st.markdown("<br>", unsafe_allow_html=True) 
-        col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
-        with col_btn2:
-            if st.button('🎯 Get Recommendations', key='main_recommend_btn', use_container_width=True):
-                if selected_books:
-                    try:
-                        obj.recommendations_engine(selected_books)
-                    except AppException as e:
-                        st.error(f"Error during recommendation: {e}")
-                else:
-                    st.warning("Please select a book first!")
-
-    # --- Training Section in Main Area ---
-    st.markdown("---")
-    st.markdown("### 🛠️ Maintenance & Retraining")
-    
-    with st.expander("Why Retrain?", expanded=False):
-        st.markdown("""
-        Retraining the model incorporates the latest data, which is crucial for maintaining recommendation accuracy and relevance over time. Use this when new user ratings or books have been added to your dataset.
-        """)
-
-    if st.button('🚀 Retrain Model Now', use_container_width=False, key='train_main', type='secondary'): 
-        st.markdown(
-            """
-            <script>
-            var buttons = window.parent.document.querySelectorAll('button[key="train_main"]');
-            buttons.forEach(function(button) {
-                button.classList.add('training-button');
-            });
-            </script>
-            """,
-            unsafe_allow_html=True
-        )
-        obj.train_engine()
+    main()
