@@ -53,7 +53,7 @@ st.set_page_config(
     page_title="Book Discovery Engine",
     page_icon="📚",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded" 
 )
 
 # --- Enhanced CSS for a Modern Look ---
@@ -61,8 +61,35 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
     
-    /* Hide Streamlit's default elements */
+    /* Hide Streamlit's default elements including deploy button */
     #MainMenu, footer, header { visibility: hidden; }
+    [data-testid="stToolbar"] { display: none !important; }
+    [data-testid="stDecoration"] { display: none !important; }
+    .stDeployButton { display: none !important; }
+    
+    /* Show ONLY sidebar toggle button */
+    [data-testid="collapsedControl"] {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        z-index: 999999 !important;
+    }
+    
+    [data-testid="collapsedControl"] button {
+        background-color: rgba(139, 92, 246, 0.6) !important;
+        border-radius: 50% !important;
+        width: 48px !important;
+        height: 48px !important;
+        border: 2px solid rgba(167, 139, 250, 0.6) !important;
+        transition: all 0.2s ease-in-out !important;
+        box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4) !important;
+    }
+
+    [data-testid="collapsedControl"] button:hover {
+        background-color: rgba(139, 92, 246, 0.8) !important;
+        transform: scale(1.15) !important;
+        box-shadow: 0 6px 25px rgba(139, 92, 246, 0.6) !important;
+    }
     
     * {
         font-family: 'Inter', sans-serif;
