@@ -53,7 +53,7 @@ st.set_page_config(
     page_title="Book Discovery Engine",
     page_icon="📚",
     layout="wide",
-    initial_sidebar_state="expanded" 
+    initial_sidebar_state="expanded"
 )
 
 # --- Enhanced CSS for a Modern Look ---
@@ -67,28 +67,40 @@ st.markdown("""
     [data-testid="stDecoration"] { display: none !important; }
     .stDeployButton { display: none !important; }
     
-    /* Show ONLY sidebar toggle button */
-    [data-testid="collapsedControl"] {
+    /* Hide sidebar toggle button completely */
+    [data-testid="collapsedControl"] { display: none !important; }
+    button[data-testid="collapsedControl"] { display: none !important; }
+    
+    /* Force sidebar to be permanently open and visible */
+    section[data-testid="stSidebar"] {
         display: block !important;
         visibility: visible !important;
-        opacity: 1 !important;
-        z-index: 999999 !important;
+        position: relative !important;
+        width: 21rem !important;
+        min-width: 21rem !important;
+        max-width: 21rem !important;
+        transform: translateX(0) !important;
+        transition: none !important;
     }
     
-    [data-testid="collapsedControl"] button {
-        background-color: rgba(139, 92, 246, 0.6) !important;
-        border-radius: 50% !important;
-        width: 48px !important;
-        height: 48px !important;
-        border: 2px solid rgba(167, 139, 250, 0.6) !important;
-        transition: all 0.2s ease-in-out !important;
-        box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4) !important;
+    section[data-testid="stSidebar"][aria-expanded="false"] {
+        display: block !important;
+        width: 21rem !important;
+        min-width: 21rem !important;
+        max-width: 21rem !important;
+        margin-left: 0 !important;
+        transform: translateX(0) !important;
     }
-
-    [data-testid="collapsedControl"] button:hover {
-        background-color: rgba(139, 92, 246, 0.8) !important;
-        transform: scale(1.15) !important;
-        box-shadow: 0 6px 25px rgba(139, 92, 246, 0.6) !important;
+    
+    section[data-testid="stSidebar"] > div {
+        width: 21rem !important;
+        transform: translateX(0) !important;
+    }
+    
+    /* Adjust main content to account for permanent sidebar */
+    .main .block-container {
+        padding-left: 2rem !important;
+        max-width: calc(100% - 21rem) !important;
     }
     
     * {
@@ -287,6 +299,35 @@ st.markdown("""
         border-top: 1px solid rgba(138, 92, 246, 0.2);
     }
 </style>
+
+<script>
+    // Force sidebar to stay permanently open
+    function forceSidebarOpen() {
+        const sidebar = document.querySelector('[data-testid="stSidebar"]');
+        if (sidebar) {
+            sidebar.setAttribute('aria-expanded', 'true');
+            sidebar.style.width = '21rem';
+            sidebar.style.minWidth = '21rem';
+            sidebar.style.transform = 'translateX(0)';
+            sidebar.style.display = 'block';
+            sidebar.style.visibility = 'visible';
+        }
+        
+        // Hide the collapse button
+        const collapseBtn = document.querySelector('[data-testid="collapsedControl"]');
+        if (collapseBtn) {
+            collapseBtn.style.display = 'none';
+        }
+    }
+    
+    // Run immediately and repeatedly
+    forceSidebarOpen();
+    setInterval(forceSidebarOpen, 100);
+    
+    // Observe DOM changes
+    const observer = new MutationObserver(forceSidebarOpen);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+</script>
 """, unsafe_allow_html=True)
 
 # --- Core Recommendation Logic ---
